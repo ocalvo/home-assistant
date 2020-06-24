@@ -43,7 +43,7 @@ class Gateway:
         _LOGGER.debug(
             "Received incoming event type:%s,data:%s", callback_type, callback_data
         )
-        entries = self.get_and_delete_all_sms(state_machine)
+        entries = self.get_all_sms(state_machine)
         _LOGGER.debug("SMS entries:%s", entries)
         data = list()
 
@@ -68,8 +68,13 @@ class Gateway:
 
         self._hass.add_job(self._notify_incoming_sms, data)
 
+        try:
+            self.delete_all_sms(state_machine)
+        except Exception as e:
+            _LOGGER.error(f"Unhandled exception deleting messages:{e}")
+
     # pylint: disable=no-self-use
-    def get_and_delete_all_sms(self, state_machine, force=False):
+    def get_all_sms(self, state_machine, force=False):
         """Read and delete all SMS in the modem."""
         # Read SMS memory status ...
         memory = state_machine.GetSMSStatus()
@@ -105,10 +110,6 @@ class Gateway:
                 if all_parts_arrived or force:
                     remaining = remaining - 1
                     entries.append(entry)
-
-                    # delete retrieved sms
-                    _LOGGER.debug("Deleting message")
-                    state_machine.DeleteSMS(Folder=0, Location=entry[0]["Location"])
                 else:
                     _LOGGER.debug("Not all parts have arrived")
                     break
@@ -122,6 +123,26 @@ class Gateway:
         entries = gammu.LinkSMS(entries)
 
         return entries
+
+    def delete_all_sms(self, state_machine):
+        """Delete all SMS in the modem memory."""
+
+        _LOGGER.debug("Deleting all SMS")
+
+        # Read SMS memory status ...
+        memory = state_machine.GetSMSStatus()
+        remaining = memory["SIMSize"]
+        _LOGGER.debug("SIM Size:%i", remaining)
+
+        while remaining > 0:
+            _LOGGER.debug(f"Deleting message {remaining}")
+            try:
+                state_machine.DeleteSMS(Folder=0, Location=remaining)
+            # except gammu.ERR_MEMORY_NOT_AVAILABLE: // Not available in gammu version 1.39
+            #   _LOGGER.error("Failed to delete old messages")
+            except gammu.ERR_EMPTY:
+                _LOGGER.debug("Message already deleted")
+            remaining = remaining - 1
 
     @callback
     def _notify_incoming_sms(self, messages):
