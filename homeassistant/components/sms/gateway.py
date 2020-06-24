@@ -140,6 +140,8 @@ class Gateway:
                 state_machine.DeleteSMS(Folder=0, Location=remaining)
             # except gammu.ERR_MEMORY_NOT_AVAILABLE: // Not available in gammu version 1.39
             #   _LOGGER.error("Failed to delete old messages")
+            except Exception as e:
+                _LOGGER.error(f"Unhandled exception deleting message:{e}")
             except gammu.ERR_EMPTY:
                 _LOGGER.debug("Message already deleted")
             remaining = remaining - 1
